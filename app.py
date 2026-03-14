@@ -1,4 +1,4 @@
-pip install tensorflow
+
 import os
 import tensorflow as tf
 import numpy as np
