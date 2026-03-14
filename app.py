@@ -1,49 +1,50 @@
-pip install tensorflow
-import streamlit as st
+import os
 import tensorflow as tf
-from PIL import Image
 import numpy as np
+from tensorflow.keras.preprocessing import image
+from PIL import Image
+import cv2
+from keras.models import load_model
+from flask import Flask, request, render_template
+from werkzeug.utils import secure_filename
+from tensorflow.keras.preprocessing.image import load_img, img_to_array
+app = Flask(__name__)
 
-# 1. Load your trained model
-# Ensure 'plant_disease_model.h5' is in the same directory as this script
-@st.cache_resource
-def load_model():
-    model = tf.keras.models.load_model('plant_disease_model.h5')
-    return model
+model =load_model('model.h5')
+print('Model loaded. Check http://127.0.0.1:5000/')
 
-model = load_model()
-
-# 2. Define labels (from your notebook)
 labels = {0: 'Healthy', 1: 'Powdery', 2: 'Rust'}
 
-# 3. Preprocessing function
-def preprocess_image(image):
-    # Resize to match your model's input shape (assuming 224x224 based on common defaults)
-    image = image.resize((224, 224)) 
-    img_array = np.array(image) / 255.0  # Normalize if your model expects it
-    img_array = np.expand_dims(img_array, axis=0) # Add batch dimension
-    return img_array
 
-# --- UI Layout ---
-st.title("🌿 Plant Disease Detector")
-st.write("Upload an image of a leaf to identify its health status.")
+def getResult(image_path):
+    img = load_img(image_path, target_size=(225,225))
+    x = img_to_array(img)
+    x = x.astype('float32') / 255.
+    x = np.expand_dims(x, axis=0)
+    predictions = model.predict(x)[0]
+    return predictions
 
-uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "png", "jpeg"])
 
-if uploaded_file is not None:
-    # Display the uploaded image
-    image = Image.open(uploaded_file)
-    st.image(image, caption='Uploaded Leaf Image', use_column_width=True)
+@app.route('/', methods=['GET'])
+def index():
+    return render_template('index.html')
+
+
+@app.route('/predict', methods=['GET', 'POST'])
+def upload():
+    if request.method == 'POST':
+        f = request.files['file']
+
+        basepath = os.path.dirname(__file__)
+        file_path = os.path.join(
+            basepath, 'uploads', secure_filename(f.filename))
+        f.save(file_path)
+        predictions=getResult(file_path)
+        predicted_label = labels[np.argmax(predictions)]
+        return str(predicted_label)
+    return None
+
+
+if __name__ == '__main__':
+    app.run(debug=True)
     
-    st.write("Classifying...")
-    
-    # Run Prediction
-    processed_img = preprocess_image(image)
-    predictions = model.predict(processed_img)
-    predicted_class = np.argmax(predictions)
-    confidence = np.max(predictions) * 100
-    
-    # Display Result
-    result = labels[predicted_class]
-    st.success(f"Prediction: **{result}**")
-    st.info(f"Confidence: {confidence:.2f}%")
