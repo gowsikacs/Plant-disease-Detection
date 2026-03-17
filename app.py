@@ -1,49 +1,52 @@
-import streamlit as st
+import os
+import tensorflow as tf
 import numpy as np
-from tensorflow.keras.models import load_model
-from tensorflow.keras.preprocessing.image import load_img, img_to_array
+from tensorflow.keras.preprocessing import image
 from PIL import Image
+import cv2
+from keras.models import load_model
+from flask import Flask, request, render_template
+from werkzeug.utils import secure_filename
+from tensorflow.keras.preprocessing.image import load_img, img_to_array
+app = Flask(__name__)
 
-# Load trained model
-model = load_model("model.h5")
+model =load_model('model.h5')
+print('Model loaded. Check http://127.0.0.1:5000/')
 
-# Class labels (same order as training folders)
-classes = ["Healthy", "Powdery", "Rust"]
+labels = {0: 'Healthy', 1: 'Powdery', 2: 'Rust'}
 
-# Image preprocessing function
-def preprocess_image(image, target_size=(225,225)):
-    img = image.resize(target_size)
-    img = img_to_array(img)
-    img = img.astype('float32') / 255.0
-    img = np.expand_dims(img, axis=0)
-    return img
 
-# Streamlit UI
-st.title("🌿 Plant Disease Detection App")
-st.write("Upload a plant leaf image to detect the disease")
+def getResult(image_path):
+    img = load_img(image_path, target_size=(225,225))
+    x = img_to_array(img)
+    x = x.astype('float32') / 255.
+    x = np.expand_dims(x, axis=0)
+    predictions = model.predict(x)[0]
+    return predictions
 
-uploaded_file = st.file_uploader("Upload Leaf Image", type=["jpg","png","jpeg"])
 
-if uploaded_file is not None:
+@app.route('/', methods=['GET'])
+def index():
+    return render_template('index.html')
 
-    image = Image.open(uploaded_file)
 
-    st.image(image, caption="Uploaded Image", use_column_width=True)
+@app.route('/predict', methods=['GET', 'POST'])
+def upload():
+    if request.method == 'POST':
+        f = request.files['file']
 
-    st.write("Analyzing image...")
+        basepath = os.path.dirname(__file__)
+        file_path = os.path.join(
+            basepath, 'uploads', secure_filename(f.filename))
+        f.save(file_path)
+        predictions=getResult(file_path)
+        predicted_label = labels[np.argmax(predictions)]
+        return str(predicted_label)
+    return None
 
-    processed_image = preprocess_image(image)
 
-    prediction = model.predict(processed_image)
+if __name__ == '__main__':
+    app.run(debug=True)
 
-    predicted_class = classes[np.argmax(prediction)]
-
-    confidence = np.max(prediction) * 100
-
-    st.subheader("Prediction Result")
-
-    st.success(f"Disease: {predicted_class}")
-
-    st.info(f"Confidence: {confidence:.2f}%")
-
+  
        
